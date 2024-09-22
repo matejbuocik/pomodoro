@@ -25,6 +25,14 @@ func grey(s string) string {
 	return fmt.Sprintf("\033[30;1m%s\033[0m", s)
 }
 
+func green(s string) string {
+	return fmt.Sprintf("\033[32;1m%s\033[0m", s)
+}
+
+func cyan(s string) string {
+	return fmt.Sprintf("\033[36;1m%s\033[0m", s)
+}
+
 const (
 	StatePomodoro = iota
 	StateShortBreak
@@ -41,10 +49,6 @@ var stateNames = []string{
 	"Pomodoro",
 	"Short Break",
 	"Long Break",
-	"Pomodoro done",
-	"Short Break done",
-	"Long Break done",
-	"Select",
 }
 
 type model struct {
@@ -93,9 +97,9 @@ func (m model) getNextState() int {
 
 func (m model) View() string {
 	var sb strings.Builder
-	sb.WriteString(red("Pomodoro Timer 🍅\n\n"))
 
 	if m.state == StateSelect {
+		sb.WriteString(red("Pomodoro Timer 🍅\n\n"))
 		for i, choice := range stateNames[StatePomodoro : StateLongBreak+1] {
 			if m.cursor == i {
 				sb.WriteString(whiteBold(fmt.Sprintf("> %s\t(%d min)\n", choice, m.stateLengths[i]/60)))
@@ -107,12 +111,21 @@ func (m model) View() string {
 	}
 
 	if m.state <= StateLongBreak {
-		sb.WriteString(fmt.Sprintf("%s: %02d:%02d remaining\n", stateNames[m.state], m.secondsRemaining/60, m.secondsRemaining%60))
+		msg := "Focus!"
+		if m.state > StatePomodoro {
+			msg = "Chill."
+		}
+		sb.WriteString(fmt.Sprintf("%s: %02d:%02d remaining\n", whiteBold(msg), m.secondsRemaining/60, m.secondsRemaining%60))
 		return sb.String()
 	}
 
-	sb.WriteString(fmt.Sprintf("%s (streak: %d)\a\n", stateNames[m.state], m.pomodoroStreak))
-	sb.WriteString("Next state: " + whiteBold(stateNames[m.getNextState()]) + grey(" [Enter to proceed...]"))
+	if m.state == StatePomodoroDone {
+		sb.WriteString(green("Pomodoro complete "))
+		sb.WriteString(fmt.Sprintf("✅\nGood job! (streak: %d)\a\n", m.pomodoroStreak))
+	} else {
+		sb.WriteString(cyan("Chilled out and ready for the next one!\a\n"))
+	}
+	sb.WriteString("Upcoming: " + whiteBold(stateNames[m.getNextState()]) + grey(" [Enter to proceed...]"))
 
 	return sb.String()
 }
