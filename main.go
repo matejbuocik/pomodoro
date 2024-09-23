@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log/slog"
 	"os"
 
@@ -8,7 +9,17 @@ import (
 )
 
 func main() {
-	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true})
+	logFile := flag.String("logfile", "/dev/null", "File to log into")
+	flag.Parse()
+
+	file, err := os.Create(*logFile)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+	defer file.Close()
+
+	h := slog.NewTextHandler(file, &slog.HandlerOptions{AddSource: true})
 	slog.SetDefault(slog.New(h))
 	slog.Info("Starting")
 
