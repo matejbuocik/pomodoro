@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -57,10 +58,14 @@ type model struct {
 	cursor           int
 	stateLengths     []int
 	pomodoroStreak   int
+
+	db              *sql.DB
+	currentPomodoro *Pomodoro
 }
 
-func initialModel() model {
+func initialModel(db *sql.DB) model {
 	return model{
+		db:    db,
 		state: StateSelect,
 		stateLengths: []int{
 			25 * 60,
@@ -142,6 +147,35 @@ func (m model) Init() tea.Cmd {
 	return tea.SetWindowTitle("Pomodoro 🍅")
 }
 
+func (m *model) startPomodoro(t int) {
+	m.state = t
+	slog.Info("Start", "state", stateNames[m.state])
+	m.secondsRemaining = m.stateLengths[m.state]
+	m.currentPomodoro = &Pomodoro{
+		Type:  m.state,
+		Start: time.Now(),
+	}
+}
+
+func (m *model) endPomodoro() {
+	slog.Info("End", "state", stateNames[m.state])
+	m.currentPomodoro.End = time.Now()
+
+	go func(db *sql.DB, p *Pomodoro, stateName string) {
+		if err := AddPomodoro(db, p); err != nil {
+			slog.Error(err.Error())
+		} else {
+			slog.Info("DB Save", "state", stateName)
+		}
+	}(m.db, m.currentPomodoro, stateNames[m.state])
+
+	m.currentPomodoro = nil
+	m.state = StatePomodoroDone + m.state
+	if m.state == StatePomodoroDone {
+		m.pomodoroStreak++
+	}
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch msg.String() {
@@ -162,9 +196,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 			case "enter", " ":
-				m.state = m.cursor
-				slog.Info("Setting", "state", stateNames[m.state])
-				m.secondsRemaining = m.stateLengths[m.state]
+				m.startPomodoro(m.cursor)
 				return m, doTick()
 			}
 		}
@@ -185,11 +217,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, doTick()
 			}
 
-			slog.Info("Finished", "state", stateNames[m.state])
-			m.state = StatePomodoroDone + m.state
-			if m.state == StatePomodoroDone {
-				m.pomodoroStreak++
-			}
+			m.endPomodoro()
 		}
 
 		return m, nil
@@ -198,9 +226,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		switch msg.String() {
 		case "enter", " ":
-			m.state = m.getNextState()
-			slog.Info("Setting", "state", stateNames[m.state])
-			m.secondsRemaining = m.stateLengths[m.state]
+			m.startPomodoro(m.getNextState())
 			return m, doTick()
 		case "esc":
 			slog.Info("Escape")
