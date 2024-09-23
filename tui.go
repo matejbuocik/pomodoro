@@ -34,6 +34,10 @@ func cyan(s string) string {
 	return fmt.Sprintf("\033[36;1m%s\033[0m", s)
 }
 
+func whiteUnderline(s string) string {
+	return fmt.Sprintf("\033[37;4m%s\033[0m", s)
+}
+
 const (
 	StatePomodoro = iota
 	StateShortBreak
@@ -103,7 +107,8 @@ func (m model) getNextState() int {
 func (m model) View() string {
 	var sb strings.Builder
 
-	if m.state == StateSelect {
+	switch m.state {
+	case StateSelect:
 		sb.WriteString(red("Pomodoro Timer 🍅\n\n"))
 		for i, choice := range stateNames[StatePomodoro : StateLongBreak+1] {
 			if m.cursor == i {
@@ -113,25 +118,30 @@ func (m model) View() string {
 			}
 		}
 		return sb.String()
-	}
 
-	if m.state <= StateLongBreak {
-		msg := "Focus!"
+	case StatePomodoro, StateShortBreak, StateLongBreak:
+		msg := red("Focus!")
 		if m.state > StatePomodoro {
-			msg = "Chill."
+			msg = cyan("Chill.")
 		}
 		sb.WriteString(fmt.Sprintf("%s: %02d:%02d remaining\n", whiteBold(msg), m.secondsRemaining/60, m.secondsRemaining%60))
 		return sb.String()
-	}
 
-	if m.state == StatePomodoroDone {
+	case StatePomodoroDone:
 		sb.WriteString(green("Pomodoro complete "))
 		sb.WriteString(fmt.Sprintf("✅\nGood job! (streak: %d)\a\n", m.pomodoroStreak))
-	} else {
-		sb.WriteString(cyan("Chilled out and ready for the next one!\a\n"))
-	}
-	sb.WriteString("Upcoming: " + whiteBold(stateNames[m.getNextState()]) + grey(" [Enter to proceed...]"))
 
+	case StateShortBreakDone:
+		sb.WriteString(cyan("Short break complete "))
+		sb.WriteString("✅\nReady for the next one?\a\n")
+
+	case StateLongBreakDone:
+		sb.WriteString(cyan("Long break complete "))
+		sb.WriteString("✅\nWell rested and ready for the next one?\a\n")
+	}
+
+	sb.WriteString(whiteUnderline("Note: "+m.currentPomodoro.Note) + "\n")
+	sb.WriteString("Upcoming: " + stateNames[m.getNextState()] + grey(" [Enter to proceed...]"))
 	return sb.String()
 }
 
@@ -160,20 +170,16 @@ func (m *model) startPomodoro(t int) {
 func (m *model) endPomodoro() {
 	slog.Info("End", "state", stateNames[m.state])
 	m.currentPomodoro.End = time.Now()
-
-	go func(db *sql.DB, p *Pomodoro, stateName string) {
-		if err := AddPomodoro(db, p); err != nil {
-			slog.Error(err.Error())
-		} else {
-			slog.Info("DB Save", "state", stateName)
-		}
-	}(m.db, m.currentPomodoro, stateNames[m.state])
-
-	m.currentPomodoro = nil
-	m.state = StatePomodoroDone + m.state
-	if m.state == StatePomodoroDone {
+	if m.state == StatePomodoro {
 		m.pomodoroStreak++
 	}
+	m.state = StatePomodoroDone + m.state
+}
+
+func (m *model) gotoMenu() {
+	slog.Info("Escape")
+	m.state = StateSelect
+	m.cursor = 0
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -206,9 +212,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if StatePomodoro <= m.state && m.state <= StateLongBreak {
 		if msg, ok := msg.(tea.KeyMsg); ok && msg.String() == "esc" {
-			slog.Info("Escape")
-			m.state = StateSelect
-			m.cursor = 0
+			m.gotoMenu()
 		}
 
 		if _, ok := msg.(TickMsg); ok {
@@ -224,14 +228,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if msg, ok := msg.(tea.KeyMsg); ok {
-		switch msg.String() {
-		case "enter", " ":
+		switch msg.Type {
+		case tea.KeyEnter:
+			go func(db *sql.DB, p *Pomodoro, stateName string) {
+				if err := AddPomodoro(db, p); err != nil {
+					slog.Error(err.Error())
+				} else {
+					slog.Info("DB Save", "state", stateName)
+				}
+			}(m.db, m.currentPomodoro, stateNames[m.state-3])
+			m.currentPomodoro = nil
 			m.startPomodoro(m.getNextState())
 			return m, doTick()
-		case "esc":
-			slog.Info("Escape")
-			m.state = StateSelect
-			m.cursor = 0
+		case tea.KeyEsc:
+			m.gotoMenu()
+		case tea.KeyBackspace:
+			m.currentPomodoro.Note = m.currentPomodoro.Note[:max(0, len(m.currentPomodoro.Note)-1)]
+		case tea.KeySpace:
+			m.currentPomodoro.Note += " "
+		case tea.KeyRunes:
+			m.currentPomodoro.Note += msg.String()
 		}
 	}
 
