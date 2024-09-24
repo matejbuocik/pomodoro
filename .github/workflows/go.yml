@@ -1,0 +1,41 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go 1.21.x
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21.x'
+
+    - name: Install dependencies
+      run: go get .
+
+    - name: Build linux x86_64
+      run: GOOS=linux GOARCH=amd64 go build -v -o pomodoro-linux-x86_64
+
+    - name: Upload linux binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: pomodoro-linux-x86_64
+        path: pomodoro-linux-x86_64
+
+    - name: Build macos x86_64
+      run: GOOS=darwin GOARCH=amd64 go build -v -o pomodoro-darwin-x86_64
+
+    - name: Upload macos binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: pomodoro-darwin-x86_64
+        path: pomodoro-darwin-x86_64
+  
