@@ -1,11 +1,12 @@
 # This workflow will build a golang project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
-name: Go
+name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+    - 'v*'
 
 jobs:
   build:
@@ -24,18 +25,13 @@ jobs:
     - name: Build linux x86_64
       run: GOOS=linux GOARCH=amd64 go build -v -o pomodoro-linux-x86_64
 
-    - name: Upload linux binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: pomodoro-linux-x86_64
-        path: pomodoro-linux-x86_64
-
     - name: Build macos x86_64
       run: GOOS=darwin GOARCH=amd64 go build -v -o pomodoro-darwin-x86_64
 
-    - name: Upload macos binary
-      uses: actions/upload-artifact@v4
+    - name: Make release
+      uses: softprops/action-gh-release@v2
       with:
-        name: pomodoro-darwin-x86_64
-        path: pomodoro-darwin-x86_64
-  
+        files: |
+          pomodoro-linux-x86_64
+          pomodoro-darwin-x86_64
+          
